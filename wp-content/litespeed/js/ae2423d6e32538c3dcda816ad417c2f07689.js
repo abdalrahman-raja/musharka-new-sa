@@ -1,0 +1,2 @@
+document.addEventListener("DOMContentLoaded",function(){const section=document.querySelector(".careers");if(!section)return;const selects=section.querySelectorAll("select");selects.forEach((select)=>{select.addEventListener("change",function(){console.log(this.selectedIndex);if(this.selectedIndex===0){this.classList.add("placeholder")}else{this.classList.remove("placeholder")}})})})
+;

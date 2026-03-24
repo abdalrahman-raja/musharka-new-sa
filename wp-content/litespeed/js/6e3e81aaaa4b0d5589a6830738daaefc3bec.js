@@ -1,0 +1,2 @@
+document.addEventListener("DOMContentLoaded",function(){const banner=document.querySelector(".announcement-banner");if(!banner)return;const closeBtn=banner.querySelector(".close-btn");closeBtn.addEventListener("click",()=>{banner.style.display="none"})})
+;
