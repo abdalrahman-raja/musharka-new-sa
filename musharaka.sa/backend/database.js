@@ -1,5 +1,5 @@
 'use strict';
-const Database = require('better-sqlite3');
+const sqlite3  = require('sqlite3').verbose();
 const path     = require('path');
 const bcrypt   = require('bcryptjs');
 
@@ -10,9 +10,57 @@ const fs = require('fs');
 const dataDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+const sqliteDb = new sqlite3.Database(DB_PATH, (err) => {
+  if (err) {
+    console.error('✗ Database connection error:', err.message);
+    process.exit(1);
+  }
+  console.log('✓ Database connected:', DB_PATH);
+});
+
+sqliteDb.configure('busyTimeout', 5000);
+sqliteDb.run('PRAGMA journal_mode = WAL');
+sqliteDb.run('PRAGMA foreign_keys = ON');
+
+// Create wrapper to match better-sqlite3 API
+const db = {
+  exec: (sql) => {
+    return new Promise((resolve, reject) => {
+      sqliteDb.exec(sql, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  },
+  prepare: (sql) => {
+    return {
+      run: function(...params) {
+        return new Promise((resolve, reject) => {
+          sqliteDb.run(sql, params, function(err) {
+            if (err) reject(err);
+            else resolve({ lastID: this.lastID, changes: this.changes });
+          });
+        });
+      },
+      get: (...params) => {
+        return new Promise((resolve, reject) => {
+          sqliteDb.get(sql, params, (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          });
+        });
+      },
+      all: (...params) => {
+        return new Promise((resolve, reject) => {
+          sqliteDb.all(sql, params, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          });
+        });
+      }
+    };
+  }
+};
 
 /* ─────────────────────────────────────────
    SCHEMA
@@ -98,30 +146,38 @@ db.exec(`
     value TEXT,
     label TEXT
   );
-`);
-
-/* ─── Seed default admin if table is empty ─── */
-const adminCount = db.prepare('SELECT COUNT(*) AS c FROM admins').get().c;
-if (adminCount === 0) {
-  const hash = bcrypt.hashSync('Admin@1234', 10);
-  db.prepare(`INSERT INTO admins (username, password, name, role)
-              VALUES (?, ?, ?, ?)`)
-    .run('admin', hash, 'مدير النظام', 'superadmin');
-  console.log('[DB] Default admin created → username: admin | password: Admin@1234');
-}
-
-/* ─── Seed default settings ─── */
-const settingsCount = db.prepare('SELECT COUNT(*) AS c FROM site_settings').get().c;
-if (settingsCount === 0) {
-  const defaults = [
-    ['whatsapp_number', '966582062882',          'رقم واتساب'],
-    ['phone_number',    '+966582062882',          'رقم الهاتف'],
-    ['company_name',    'مشاركة المالية',         'اسم الشركة'],
-    ['company_email',   'info@musharaka.sa',      'البريد الإلكتروني'],
-    ['license_number',  '27-13169',               'رقم الترخيص'],
-  ];
-  const ins = db.prepare('INSERT OR IGNORE INTO site_settings (key, value, label) VALUES (?,?,?)');
-  defaults.forEach(([k, v, l]) => ins.run(k, v, l));
-}
+`).then(() => {
+  console.log('✓ Database schema initialized');
+  
+  // Seed default admin if table is empty
+  db.prepare('SELECT COUNT(*) AS c FROM admins').get().then(adminCount => {
+    if (adminCount && adminCount.c === 0) {
+      const hash = bcrypt.hashSync('Admin@1234', 10);
+      db.prepare(`INSERT INTO admins (username, password, name, role)
+                  VALUES (?, ?, ?, ?)`)
+        .run('admin', hash, 'مدير النظام', 'superadmin')
+        .then(() => console.log('✓ Default admin created → username: admin | password: Admin@1234'));
+    }
+  });
+  
+  // Seed default settings
+  db.prepare('SELECT COUNT(*) AS c FROM site_settings').get().then(settingsCount => {
+    if (settingsCount && settingsCount.c === 0) {
+      const defaults = [
+        ['whatsapp_number', '966582062882',          'رقم واتساب'],
+        ['phone_number',    '+966582062882',          'رقم الهاتف'],
+        ['company_name',    'مشاركة المالية',         'اسم الشركة'],
+        ['company_email',   'info@musharaka.sa',      'البريد الإلكتروني'],
+        ['license_number',  '2051056409',               'رقم الترخيص'],
+      ];
+      const ins = db.prepare('INSERT OR IGNORE INTO site_settings (key, value, label) VALUES (?,?,?)');
+      Promise.all(defaults.map(([k, v, l]) => ins.run(k, v, l))).then(() => {
+        console.log('✓ Default settings created');
+      });
+    }
+  });
+}).catch(err => {
+  console.error('✗ Schema initialization error:', err.message);
+});
 
 module.exports = db;
