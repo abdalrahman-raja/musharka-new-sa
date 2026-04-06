@@ -1,0 +1,24 @@
+# Robots.txt for Musharaka Financial Company
+# https://musharaka.space
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://musharaka.space/sitemap.xml
+
+# Disallow admin and private areas
+Disallow: /admin/
+Disallow: /backend/
+Disallow: /wp-json/
+Disallow: /*.bak$
+Disallow: /*.py$
+Disallow: /*.ps1$
+
+# Allow important pages
+Allow: /open-account/
+Allow: /investments.html
+Allow: /account-requirements.html
+
+# Crawl-delay for better server performance
+Crawl-delay: 1
