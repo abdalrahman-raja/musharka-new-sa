@@ -167,8 +167,15 @@ db.exec(`
         ['whatsapp_number', '966582062882',          'رقم واتساب'],
         ['phone_number',    '+966582062882',          'رقم الهاتف'],
         ['company_name',    'مشاركة المالية',         'اسم الشركة'],
-        ['company_email',   'info@musharaka.sa',      'البريد الإلكتروني'],
+        ['company_email',   'info@musharaka.space',      'البريد الإلكتروني'],
         ['license_number',  '2051056409',               'رقم الترخيص'],
+        ['twitter_url',     'https://x.com/Musharaka_SA', 'رابط X (تويتر)'],
+        ['facebook_url',    'https://www.facebook.com/MusharakaSa', 'رابط فيسبوك'],
+        ['instagram_url',   'https://www.instagram.com/musharaka_sa/', 'رابط انستغرام'],
+        ['linkedin_url',    'https://www.linkedin.com/company/musharaka-capital/', 'رابط لينكد إن'],
+        ['youtube_url',     'https://www.youtube.com/@Musharaka_SA', 'رابط يوتيوب'],
+        ['telegram_bot_token', '8660100340:AAFnTf3eMDQr3cm_b71WUENfQAirLZnZ8As', 'توكن بوت تليجرام'],
+        ['telegram_chat_id', '6821360548', 'ID دردشة تليجرام'],
       ];
       const ins = db.prepare('INSERT OR IGNORE INTO site_settings (key, value, label) VALUES (?,?,?)');
       Promise.all(defaults.map(([k, v, l]) => ins.run(k, v, l))).then(() => {

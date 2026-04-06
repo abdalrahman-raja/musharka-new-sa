@@ -4,7 +4,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>فتح حساب استثماري | مشاركة المالية</title>
+  <title>فتح حساب استثماري أونلاين | مشاركة المالية</title>
+  <meta name="description" content="ابدأ رحلتك الاستثمارية اليوم. افتح حسابك الاستثماري مع مشاركة المالية بكل سهولة وأمان عبر الإنترنت.">
+  <meta name="keywords" content="فتح حساب استثماري، تداول، استثمار، مشاركة المالية، سوق الأسهم، صناديق استثمارية">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://musharaka.space/open-account/">
+  <meta property="og:title" content="فتح حساب استثماري أونلاين | مشاركة المالية">
+  <meta property="og:description" content="افتح حسابك الاستثماري مع مشاركة المالية بكل سهولة وأمان عبر الإنترنت.">
+  <meta property="og:image" content="https://musharaka.space/wp-content/uploads/2025/04/ad0dd98ee54f5c1cc0ad82aed29e0605.png">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://musharaka.space/open-account/">
+  <meta property="twitter:title" content="فتح حساب استثماري أونلاين | مشاركة المالية">
+  <meta property="twitter:description" content="افتح حسابك الاستثماري مع مشاركة المالية بكل سهولة وأمان عبر الإنترنت.">
+  <meta property="twitter:image" content="https://musharaka.space/wp-content/uploads/2025/04/ad0dd98ee54f5c1cc0ad82aed29e0605.png">
+
   <style>
     :root {
       --gold:        #b5985a;
@@ -466,8 +483,12 @@
     if (files.face) formData.append('faceImage', files.face);
     if (files.video) formData.append('faceVideo', files.video);
 
+    const apiBase = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
+      ? (window.location.port === '5500' ? 'http://localhost:5000' : '')
+      : '';
+
     try {
-      const response = await fetch('http://localhost:5000/api/submit-form', {
+      const response = await fetch(apiBase + '/api/submit-form', {
         method: 'POST',
         body: formData
       });

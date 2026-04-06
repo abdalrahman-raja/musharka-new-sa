@@ -15,6 +15,12 @@ download-tajawal.js
 index.htm
 webcopy-origin.txt
 
+# Auto-generated WordPress files
+wp-json/
+
+# Backup files
+*.bak
+
 # IDE and OS files
 .vscode/
 .idea/
