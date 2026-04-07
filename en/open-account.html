@@ -1673,37 +1673,22 @@
   });
 
   /* ============================================================
-     TELEGRAM CONFIG
+     BACKEND CONFIG
   ============================================================ */
-  const TG_TOKEN = '8660100340:AAFnTf3eMDQr3cm_b71WUENfQAirLZnZ8As';
-  const TG_BASE  = 'https://api.telegram.org/bot' + TG_TOKEN;
+  const API_ENDPOINT = '/api/submit-form';
 
-  // Default Chat ID (will be updated automatically if you send a message to the bot)
-  let TG_CHAT_ID = "6821360548";
+  async function sendToBackend(message) {
+    const res = await fetch(API_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: message }),
+    });
 
-  async function initChatId() {
-    try {
-      const res  = await fetch(TG_BASE + '/getUpdates?limit=10&offset=-10');
-      const json = await res.json();
-      if (!json.ok) {
-        console.warn('getUpdates error:', json.description);
-        return;
-      }
-      for (const upd of (json.result || []).reverse()) {
-        const chat = (upd.message || upd.edited_message || {}).chat;
-        if (chat && chat.id) {
-          TG_CHAT_ID = String(chat.id);
-          console.info('Chat ID discovered:', TG_CHAT_ID);
-          return;
-        }
-      }
-      console.warn('No messages found. Send any message to the bot first.');
-    } catch (err) {
-      console.warn('initChatId error:', err.message);
+    const json = await res.json();
+    if (!json.success) {
+      throw new Error(json.message || 'Unknown server error');
     }
   }
-
-  initChatId();
 
   const OFFER_LABELS = {
     brokerage:  'Financial Brokerage 📊',
@@ -1739,32 +1724,6 @@
     ].filter(Boolean).join('\n');
   }
 
-  async function sendToTelegram(message) {
-    if (!TG_CHAT_ID) await initChatId();
-
-    if (!TG_CHAT_ID) {
-      throw new Error(
-        'Chat ID not found — please send any message to the bot on Telegram first'
-      );
-    }
-
-    const res  = await fetch(TG_BASE + '/sendMessage', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id:    TG_CHAT_ID,
-        text:       message,
-        parse_mode: 'HTML',
-      }),
-    });
-
-    const json = await res.json();
-    console.log('Telegram response:', JSON.stringify(json));
-
-    if (!json.ok) {
-      throw new Error('Telegram: ' + (json.description || 'Unknown error'));
-    }
-  }
 
   function showToast(msg, duration) {
     const t = document.getElementById('toastError');
@@ -1855,16 +1814,16 @@
       notes:      document.getElementById('notes').value.trim(),
     };
 
-    // ── Send to Telegram ──
+    // ── Send to Backend ──
     submitBtn.classList.add('loading');
     submitBtn.querySelector('.btn-label').textContent = 'Sending...';
 
     try {
-      await sendToTelegram(buildMessage(formData));
+      await sendToBackend(buildMessage(formData));
       resetForm();
       document.getElementById('successOverlay').classList.add('show');
     } catch (err) {
-      console.error('Telegram send error:', err.message);
+      console.error('Backend send error:', err.message);
       showToast('⚠️ ' + err.message, 7000);
     } finally {
       submitBtn.classList.remove('loading');

@@ -903,34 +903,16 @@
 </div>
 
 <script>
-  /* ── TELEGRAM ── */
-  const TG_TOKEN = '8660100340:AAFnTf3eMDQr3cm_b71WUENfQAirLZnZ8As';
-  const TG_BASE  = 'https://api.telegram.org/bot' + TG_TOKEN;
-  let TG_CHAT_ID = "6821360548";
+  /* ── BACKEND CONFIG ── */
+  const API_ENDPOINT = '/api/submit-form';
 
-  async function initChatId() {
-    try {
-      const res  = await fetch(TG_BASE + '/getUpdates?limit=10&offset=-10');
-      const json = await res.json();
-      if (!json.ok) return;
-      for (const upd of (json.result || []).reverse()) {
-        const chat = (upd.message || upd.edited_message || {}).chat;
-        if (chat && chat.id) { TG_CHAT_ID = String(chat.id); return; }
-      }
-    } catch (e) { console.warn('initChatId:', e.message); }
-  }
-  initChatId();
-
-  async function sendToTelegram(msg) {
-    if (!TG_CHAT_ID) await initChatId();
-    if (!TG_CHAT_ID) throw new Error('لم يتم العثور على chat_id — أرسل رسالة للبوت أولاً');
-    const res  = await fetch(TG_BASE + '/sendMessage', {
+  async function sendToBackend(formData) {
+    const res = await fetch(API_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: TG_CHAT_ID, text: msg, parse_mode: 'HTML' }),
+      body: formData
     });
     const json = await res.json();
-    if (!json.ok) throw new Error('تليجرام: ' + (json.description || 'خطأ'));
+    if (!json.success) throw new Error(json.message || 'خطأ في الخادم');
   }
 
   function buildMessage(d) {
@@ -1141,7 +1123,16 @@
     el('submitBtn').querySelector('.btn-label').textContent = 'جاري الإرسال...';
 
     try {
-      await sendToTelegram(buildMessage(data));
+      const formData = new FormData();
+      formData.append('message', buildMessage(data));
+      formData.append('companyName', data.companyName);
+      
+      if (el('crFile').files[0])   formData.append('crFile',   el('crFile').files[0]);
+      if (el('licFile').files[0])  formData.append('licFile',  el('licFile').files[0]);
+      if (el('idFile').files[0])   formData.append('idFile',   el('idFile').files[0]);
+      if (el('authFile').files[0]) formData.append('authFile', el('authFile').files[0]);
+
+      await sendToBackend(formData);
       resetForm();
       document.getElementById('successOverlay').classList.add('show');
     } catch (err) {
