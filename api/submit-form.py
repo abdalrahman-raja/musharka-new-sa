@@ -36,8 +36,12 @@ def send_telegram(endpoint, data=None, files=None):
         print(f"Telegram Error: {e}")
         return None
 
-@app.route('/api/submit-form', methods=['POST'])
+@app.route('/', methods=['POST', 'GET'])
+@app.route('/api/submit-form', methods=['POST', 'GET'])
+@app.route('/api/submit-form/', methods=['POST', 'GET'])
 def submit_form():
+    if request.method == 'GET':
+        return jsonify({'success': True, 'message': 'API is active. Use POST to submit data.'})
     try:
         if request.is_json:
             form_data = request.json

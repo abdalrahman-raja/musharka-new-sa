@@ -484,7 +484,7 @@
     if (files.video) formData.append('faceVideo', files.video);
 
     try {
-      const response = await fetch('/api/submit-form', {
+      const response = await fetch('/api/submit-form/', {
         method: 'POST',
         body: formData
       });
