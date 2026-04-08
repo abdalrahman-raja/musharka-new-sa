@@ -483,12 +483,8 @@
     if (files.face) formData.append('faceImage', files.face);
     if (files.video) formData.append('faceVideo', files.video);
 
-    const apiBase = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-      ? (window.location.port === '5500' ? 'http://localhost:5000' : '')
-      : '';
-
     try {
-      const response = await fetch(apiBase + '/api/submit-form', {
+      const response = await fetch('/api/submit-form', {
         method: 'POST',
         body: formData
       });

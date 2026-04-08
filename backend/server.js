@@ -75,9 +75,14 @@ const getIp = req =>
 
 async function log(adminId, action, entity, entityId, detail, ip) {
   try {
-    await db.prepare(`INSERT INTO activity_log (admin_id, action, entity, entity_id, detail, ip)
-                      VALUES (?, ?, ?, ?, ?, ?)`)
-      .run(adminId || null, action, entity || null, entityId || null, detail || null, ip || null);
+    await db.from('activity_log').insert({
+      admin_id: adminId || null,
+      action,
+      entity: entity || null,
+      entity_id: entityId || null,
+      detail: detail || null,
+      ip: ip || null
+    });
   } catch (err) {
     console.error('[LOG] Error:', err.message);
   }
@@ -112,18 +117,16 @@ app.post('/api/accounts/individual', async (req, res) => {
     }
 
     const ref = generateRef('individual');
-    await db.prepare(`
-      INSERT INTO account_requests
-        (ref_no, type, full_name, national_id, nationality, dob, phone, email,
-         address, city, employment, employer_name, income_source, annual_income,
-         investment_goal, risk_level, wallet_platform, wallet_address, ip_address)
-      VALUES
-        (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `).run(ref, 'individual',
+    const { error } = await db.from('account_requests').insert({
+      ref_no: ref,
+      type: 'individual',
       full_name, national_id, nationality, dob, phone, email,
       address, city, employment, employer_name, income_source, annual_income,
-      investment_goal, risk_level, wallet_platform, wallet_address, getIp(req)
-    );
+      investment_goal, risk_level, wallet_platform, wallet_address,
+      ip_address: getIp(req)
+    });
+
+    if (error) throw error;
 
     await log(null, 'submit_individual', 'account_request', null, `ref:${ref}`, getIp(req));
     res.json({ success: true, ref_no: ref, message: 'تم استلام طلبك بنجاح. سيتواصل معك فريقنا قريباً.' });
@@ -149,21 +152,19 @@ app.post('/api/accounts/entity', async (req, res) => {
     }
 
     const ref = generateRef('entity');
-    await db.prepare(`
-      INSERT INTO account_requests
-        (ref_no, type, entity_name, entity_type, cr_number, vat_number,
-         entity_address, phone, email, city,
-         auth_person, auth_id, auth_phone,
-         wallet_platform, wallet_address, services, investment_goal, ip_address)
-      VALUES
-        (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `).run(ref, 'entity',
+    const { error } = await db.from('account_requests').insert({
+      ref_no: ref,
+      type: 'entity',
       entity_name, entity_type, cr_number, vat_number,
       entity_address, phone, email, city,
       auth_person, auth_id, auth_phone,
       wallet_platform, wallet_address,
-      JSON.stringify(services || []), investment_goal, getIp(req)
-    );
+      services: services || [],
+      investment_goal,
+      ip_address: getIp(req)
+    });
+
+    if (error) throw error;
 
     await log(null, 'submit_entity', 'account_request', null, `ref:${ref}`, getIp(req));
     res.json({ success: true, ref_no: ref, message: 'تم استلام طلب الكيان بنجاح. سيتواصل معك فريقنا قريباً.' });
@@ -180,12 +181,14 @@ app.post('/api/contact', async (req, res) => {
     if (!name || !message) {
       return res.status(400).json({ success: false, error: 'الاسم والرسالة مطلوبان.' });
     }
-    const result = await db.prepare(`
-      INSERT INTO contact_messages (name, email, phone, subject, message, ip_address)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(name, email, phone, subject, message, getIp(req));
+    const { data: result, error } = await db.from('contact_messages').insert({
+      name, email, phone, subject, message,
+      ip_address: getIp(req)
+    }).select('id').single();
 
-    await log(null, 'contact_message', 'contact_messages', result.lastID, null, getIp(req));
+    if (error) throw error;
+
+    await log(null, 'contact_message', 'contact_messages', result.id, null, getIp(req));
     res.json({ success: true, message: 'تم إرسال رسالتك بنجاح. سنتواصل معك قريباً.' });
   } catch (err) {
     console.error(err);
@@ -203,8 +206,8 @@ app.post('/api/admin/login', authLimiter, async (req, res) => {
       return res.status(400).json({ success: false, error: 'اسم المستخدم وكلمة المرور مطلوبان.' });
     }
 
-    const admin = await db.prepare('SELECT * FROM admins WHERE username = ?').get(username);
-    if (!admin || !bcrypt.compareSync(password, admin.password)) {
+    const { data: admin, error } = await db.from('admins').select('*').eq('username', username).single();
+    if (error || !admin || !bcrypt.compareSync(password, admin.password)) {
       return res.status(401).json({ success: false, error: 'بيانات الدخول غير صحيحة.' });
     }
 
@@ -229,30 +232,57 @@ app.post('/api/admin/login', authLimiter, async (req, res) => {
 /* ── Dashboard Stats ── */
 app.get('/api/admin/stats', authenticate, async (req, res) => {
   try {
-    const totalRequests  = (await db.prepare('SELECT COUNT(*) AS c FROM account_requests').get()).c || 0;
-    const pendingReq     = (await db.prepare("SELECT COUNT(*) AS c FROM account_requests WHERE status='pending'").get()).c || 0;
-    const approvedReq    = (await db.prepare("SELECT COUNT(*) AS c FROM account_requests WHERE status='approved'").get()).c || 0;
-    const rejectedReq    = (await db.prepare("SELECT COUNT(*) AS c FROM account_requests WHERE status='rejected'").get()).c || 0;
-    const reviewingReq   = (await db.prepare("SELECT COUNT(*) AS c FROM account_requests WHERE status='reviewing'").get()).c || 0;
-    const totalMessages  = (await db.prepare('SELECT COUNT(*) AS c FROM contact_messages').get()).c || 0;
-    const unreadMessages = (await db.prepare("SELECT COUNT(*) AS c FROM contact_messages WHERE status='unread'").get()).c || 0;
-    const todayRequests  = (await db.prepare("SELECT COUNT(*) AS c FROM account_requests WHERE date(submitted_at)=date('now')").get()).c || 0;
-    const individuals    = (await db.prepare("SELECT COUNT(*) AS c FROM account_requests WHERE type='individual'").get()).c || 0;
-    const entities       = (await db.prepare("SELECT COUNT(*) AS c FROM account_requests WHERE type='entity'").get()).c || 0;
+    const today = new Date().toISOString().split('T')[0] + 'T00:00:00Z';
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
 
-    // Last 7 days requests
-    const weekData = await db.prepare(`
-      SELECT date(submitted_at) AS day, COUNT(*) AS count
-      FROM account_requests
-      WHERE submitted_at >= datetime('now','-7 days')
-      GROUP BY day ORDER BY day
-    `).all();
+    const [
+      { count: totalRequests },
+      { count: pendingReq },
+      { count: approvedReq },
+      { count: rejectedReq },
+      { count: reviewingReq },
+      { count: totalMessages },
+      { count: unreadMessages },
+      { count: todayRequests },
+      { count: individuals },
+      { count: entities },
+      { data: weekRows }
+    ] = await Promise.all([
+      db.from('account_requests').select('*', { count: 'exact', head: true }),
+      db.from('account_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+      db.from('account_requests').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
+      db.from('account_requests').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
+      db.from('account_requests').select('*', { count: 'exact', head: true }).eq('status', 'reviewing'),
+      db.from('contact_messages').select('*', { count: 'exact', head: true }),
+      db.from('contact_messages').select('*', { count: 'exact', head: true }).eq('status', 'unread'),
+      db.from('account_requests').select('*', { count: 'exact', head: true }).gte('submitted_at', today),
+      db.from('account_requests').select('*', { count: 'exact', head: true }).eq('type', 'individual'),
+      db.from('account_requests').select('*', { count: 'exact', head: true }).eq('type', 'entity'),
+      db.from('account_requests').select('submitted_at').gte('submitted_at', weekAgo.toISOString())
+    ]);
+
+    // Aggregate week data manually since client doesn't support GROUP BY
+    const weekMap = {};
+    (weekRows || []).forEach(r => {
+      const d = r.submitted_at.split('T')[0];
+      weekMap[d] = (weekMap[d] || 0) + 1;
+    });
+    const weekData = Object.keys(weekMap).sort().map(day => ({ day, count: weekMap[day] }));
 
     res.json({
       success: true,
       stats: {
-        totalRequests, pendingReq, approvedReq, rejectedReq, reviewingReq,
-        totalMessages, unreadMessages, todayRequests, individuals, entities
+        totalRequests: totalRequests || 0,
+        pendingReq: pendingReq || 0,
+        approvedReq: approvedReq || 0,
+        rejectedReq: rejectedReq || 0,
+        reviewingReq: reviewingReq || 0,
+        totalMessages: totalMessages || 0,
+        unreadMessages: unreadMessages || 0,
+        todayRequests: todayRequests || 0,
+        individuals: individuals || 0,
+        entities: entities || 0
       },
       weekData
     });
@@ -266,32 +296,25 @@ app.get('/api/admin/stats', authenticate, async (req, res) => {
 app.get('/api/admin/accounts', authenticate, async (req, res) => {
   try {
     const { status, type, search, page = 1, limit = 20 } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const from = (parseInt(page) - 1) * parseInt(limit);
+    const to = from + parseInt(limit) - 1;
 
-    let where = [];
-    let params = [];
+    let query = db.from('account_requests').select('id, ref_no, type, status, full_name, entity_name, phone, email, national_id, cr_number, submitted_at, updated_at', { count: 'exact' });
 
-    if (status) { where.push("status = ?"); params.push(status); }
-    if (type)   { where.push("type = ?");   params.push(type); }
+    if (status) query = query.eq('status', status);
+    if (type)   query = query.eq('type', type);
     if (search) {
-      where.push("(full_name LIKE ? OR entity_name LIKE ? OR phone LIKE ? OR ref_no LIKE ? OR national_id LIKE ?)");
       const s = `%${search}%`;
-      params.push(s, s, s, s, s);
+      query = query.or(`full_name.ilike.${s},entity_name.ilike.${s},phone.ilike.${s},ref_no.ilike.${s},national_id.ilike.${s}`);
     }
 
-    const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const { data: rows, count: total, error } = await query
+      .order('submitted_at', { ascending: false })
+      .range(from, to);
 
-    const countResult = await db.prepare(`SELECT COUNT(*) AS c FROM account_requests ${whereClause}`).get(...params);
-    const total = countResult ? countResult.c : 0;
-    const rows  = await db.prepare(`
-      SELECT id, ref_no, type, status, full_name, entity_name, phone, email,
-             national_id, cr_number, submitted_at, updated_at
-      FROM account_requests ${whereClause}
-      ORDER BY submitted_at DESC
-      LIMIT ? OFFSET ?
-    `).all(...params, parseInt(limit), offset);
+    if (error) throw error;
 
-    res.json({ success: true, total, page: parseInt(page), data: rows });
+    res.json({ success: true, total: total || 0, page: parseInt(page), data: rows });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'حدث خطأ في الخادم.' });
@@ -301,9 +324,8 @@ app.get('/api/admin/accounts', authenticate, async (req, res) => {
 /* ── Get Single Account Request ── */
 app.get('/api/admin/accounts/:id', authenticate, async (req, res) => {
   try {
-    const row = await db.prepare('SELECT * FROM account_requests WHERE id = ?').get(req.params.id);
-    if (!row) return res.status(404).json({ success: false, error: 'الطلب غير موجود.' });
-    if (row.services) { try { row.services = JSON.parse(row.services); } catch {} }
+    const { data: row, error } = await db.from('account_requests').select('*').eq('id', req.params.id).single();
+    if (error || !row) return res.status(404).json({ success: false, error: 'الطلب غير موجود.' });
     res.json({ success: true, data: row });
   } catch (err) {
     console.error(err);
@@ -319,17 +341,14 @@ app.patch('/api/admin/accounts/:id', authenticate, async (req, res) => {
     if (status && !valid.includes(status)) {
       return res.status(400).json({ success: false, error: 'حالة غير صالحة.' });
     }
-    const existing = await db.prepare('SELECT * FROM account_requests WHERE id = ?').get(req.params.id);
-    if (!existing) return res.status(404).json({ success: false, error: 'الطلب غير موجود.' });
 
-    const fields = [];
-    const params = [];
-    if (status) { fields.push("status = ?"); params.push(status); }
-    if (notes !== undefined) { fields.push("notes = ?"); params.push(notes); }
-    fields.push("updated_at = datetime('now')");
-    params.push(req.params.id);
+    const updateData = { updated_at: new Date().toISOString() };
+    if (status) updateData.status = status;
+    if (notes !== undefined) updateData.notes = notes;
 
-    await db.prepare(`UPDATE account_requests SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    const { error } = await db.from('account_requests').update(updateData).eq('id', req.params.id);
+    if (error) throw error;
+
     await log(req.admin.id, 'update_account', 'account_request', req.params.id, `status→${status}`, getIp(req));
     res.json({ success: true, message: 'تم تحديث الطلب بنجاح.' });
   } catch (err) {
@@ -341,9 +360,9 @@ app.patch('/api/admin/accounts/:id', authenticate, async (req, res) => {
 /* ── Delete Account Request ── */
 app.delete('/api/admin/accounts/:id', authenticate, async (req, res) => {
   try {
-    const row = await db.prepare('SELECT id FROM account_requests WHERE id = ?').get(req.params.id);
-    if (!row) return res.status(404).json({ success: false, error: 'الطلب غير موجود.' });
-    await db.prepare('DELETE FROM account_requests WHERE id = ?').run(req.params.id);
+    const { error } = await db.from('account_requests').delete().eq('id', req.params.id);
+    if (error) throw error;
+
     await log(req.admin.id, 'delete_account', 'account_request', req.params.id, null, getIp(req));
     res.json({ success: true, message: 'تم حذف الطلب.' });
   } catch (err) {
@@ -356,18 +375,18 @@ app.delete('/api/admin/accounts/:id', authenticate, async (req, res) => {
 app.get('/api/admin/messages', authenticate, async (req, res) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    const where  = status ? 'WHERE status = ?' : '';
-    const params = status ? [status] : [];
+    const from = (parseInt(page) - 1) * parseInt(limit);
+    const to = from + parseInt(limit) - 1;
 
-    const countResult = await db.prepare(`SELECT COUNT(*) AS c FROM contact_messages ${where}`).get(...params);
-    const total = countResult ? countResult.c : 0;
-    const rows  = await db.prepare(`
-      SELECT * FROM contact_messages ${where}
-      ORDER BY received_at DESC LIMIT ? OFFSET ?
-    `).all(...params, parseInt(limit), offset);
+    let query = db.from('contact_messages').select('*', { count: 'exact' });
+    if (status) query = query.eq('status', status);
 
-    res.json({ success: true, total, data: rows });
+    const { data: rows, count: total, error } = await query
+      .order('received_at', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+    res.json({ success: true, total: total || 0, data: rows });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'حدث خطأ في الخادم.' });
@@ -380,7 +399,10 @@ app.patch('/api/admin/messages/:id', authenticate, async (req, res) => {
     const { status } = req.body;
     const valid = ['unread', 'read', 'replied'];
     if (!valid.includes(status)) return res.status(400).json({ success: false, error: 'حالة غير صالحة.' });
-    await db.prepare('UPDATE contact_messages SET status = ? WHERE id = ?').run(status, req.params.id);
+
+    const { error } = await db.from('contact_messages').update({ status }).eq('id', req.params.id);
+    if (error) throw error;
+
     await log(req.admin.id, 'update_message', 'contact_messages', req.params.id, `status→${status}`, getIp(req));
     res.json({ success: true });
   } catch (err) {
@@ -392,7 +414,9 @@ app.patch('/api/admin/messages/:id', authenticate, async (req, res) => {
 /* ── Delete Message ── */
 app.delete('/api/admin/messages/:id', authenticate, async (req, res) => {
   try {
-    await db.prepare('DELETE FROM contact_messages WHERE id = ?').run(req.params.id);
+    const { error } = await db.from('contact_messages').delete().eq('id', req.params.id);
+    if (error) throw error;
+
     await log(req.admin.id, 'delete_message', 'contact_messages', req.params.id, null, getIp(req));
     res.json({ success: true });
   } catch (err) {
@@ -404,7 +428,8 @@ app.delete('/api/admin/messages/:id', authenticate, async (req, res) => {
 /* ── Site Settings ── */
 app.get('/api/admin/settings', authenticate, async (req, res) => {
   try {
-    const rows = await db.prepare('SELECT key, value, label FROM site_settings').all();
+    const { data: rows, error } = await db.from('site_settings').select('key, value, label');
+    if (error) throw error;
     res.json({ success: true, data: rows });
   } catch (err) {
     console.error(err);
@@ -416,9 +441,9 @@ app.put('/api/admin/settings', authenticate, async (req, res) => {
   try {
     const { settings } = req.body; // array of {key, value}
     if (!Array.isArray(settings)) return res.status(400).json({ success: false, error: 'Invalid format.' });
-    const upd = db.prepare('UPDATE site_settings SET value = ? WHERE key = ?');
+
     for (const { key, value } of settings) {
-      await upd.run(value, key);
+      await db.from('site_settings').update({ value }).eq('key', key);
     }
     await log(req.admin.id, 'update_settings', null, null, null, getIp(req));
     res.json({ success: true, message: 'تم حفظ الإعدادات.' });
@@ -438,12 +463,12 @@ app.post('/api/admin/change-password', authenticate, async (req, res) => {
     if (new_password.length < 8) {
       return res.status(400).json({ success: false, error: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.' });
     }
-    const admin = await db.prepare('SELECT * FROM admins WHERE id = ?').get(req.admin.id);
-    if (!bcrypt.compareSync(current_password, admin.password)) {
+    const { data: admin, error } = await db.from('admins').select('*').eq('id', req.admin.id).single();
+    if (error || !admin || !bcrypt.compareSync(current_password, admin.password)) {
       return res.status(400).json({ success: false, error: 'كلمة المرور الحالية غير صحيحة.' });
     }
     const hash = bcrypt.hashSync(new_password, 10);
-    await db.prepare('UPDATE admins SET password = ? WHERE id = ?').run(hash, req.admin.id);
+    await db.from('admins').update({ password: hash }).eq('id', req.admin.id);
     await log(req.admin.id, 'change_password', 'admins', req.admin.id, null, getIp(req));
     res.json({ success: true, message: 'تم تغيير كلمة المرور بنجاح.' });
   } catch (err) {
@@ -455,13 +480,20 @@ app.post('/api/admin/change-password', authenticate, async (req, res) => {
 /* ── Activity Log ── */
 app.get('/api/admin/log', authenticate, async (req, res) => {
   try {
-    const rows = await db.prepare(`
-      SELECT l.*, a.name AS admin_name
-      FROM activity_log l
-      LEFT JOIN admins a ON l.admin_id = a.id
-      ORDER BY l.logged_at DESC LIMIT 100
-    `).all();
-    res.json({ success: true, data: rows });
+    const { data: rows, error } = await db.from('activity_log')
+      .select('*, admins(name)')
+      .order('logged_at', { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    // Flatten admins.name to admin_name for compatibility
+    const formatted = (rows || []).map(r => ({
+      ...r,
+      admin_name: r.admins ? r.admins.name : null
+    }));
+
+    res.json({ success: true, data: formatted });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'حدث خطأ في الخادم.' });
@@ -471,7 +503,8 @@ app.get('/api/admin/log', authenticate, async (req, res) => {
 /* ── Admin profile ── */
 app.get('/api/admin/me', authenticate, async (req, res) => {
   try {
-    const admin = await db.prepare('SELECT id, username, name, role, created_at FROM admins WHERE id = ?').get(req.admin.id);
+    const { data: admin, error } = await db.from('admins').select('id, username, name, role, created_at').eq('id', req.admin.id).single();
+    if (error) throw error;
     res.json({ success: true, data: admin });
   } catch (err) {
     console.error(err);

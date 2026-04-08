@@ -922,9 +922,7 @@
    CONFIG
 ════════════════════════════════════ */
 // اكتشاف رابط API تلقائياً
-const API = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-  ? (window.location.port === '5500' ? 'http://localhost:3001/api' : '/api')
-  : '/api';
+const API = '/api';
 let TOKEN = localStorage.getItem('msh_token');
 let accPage = 1, msgPage = 1;
 const LIMIT = 15;

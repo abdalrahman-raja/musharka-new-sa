@@ -1,10 +1,29 @@
 {
+  "version": 2,
   "rewrites": [
+    {
+      "source": "/api/submit-form",
+      "destination": "/api/submit-form.py"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
     {
       "source": "/",
       "destination": "/ar/index.html"
     }
   ],
+  "functions": {
+    "api/index.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "api/submit-form.py": {
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
   "trailingSlash": true,
   "cleanUrls": true
 }
